@@ -1,0 +1,31 @@
+# fly.io 配置。app 名字部署时用 --app 覆盖，或 fly launch 时改这里。
+app = 'heartbeat-dice'
+primary_region = 'nrt'   # 东京，离国内近
+
+[build]
+  dockerfile = 'packages/server/Dockerfile'
+
+[env]
+  PORT = '2567'
+  NODE_ENV = 'production'
+
+[http_service]
+  internal_port = 2567
+  force_https = true
+  auto_stop_machines = 'suspend'
+  # ★ 保持 1 台常驻：scale-to-zero 省钱但有 2–5s 冷启动，
+  #   朋友局临时开一把最烦的就是第一次连不上（playbook §8 坑 2）
+  min_machines_running = 1
+  processes = ['app']
+
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '10s'
+    method = 'GET'
+    path = '/health'
+
+[[vm]]
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1

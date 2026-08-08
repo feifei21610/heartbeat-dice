@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "baseUrl": ".",
+    "paths": {
+      "@game/shared": ["packages/shared/src/index.ts"],
+      "@game/shared/types": ["packages/shared/src/types/game.ts"],
+      "@game/shared/constants": ["packages/shared/src/constants/game.ts"],
+      "@game/shared/game-engine": ["packages/shared/src/game-engine/index.ts"],
+      "@game/shared/data": ["packages/shared/src/data/truths.ts"]
+    }
+  },
+  "include": ["src", "packages/shared/src"]
+}

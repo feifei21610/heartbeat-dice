@@ -1,0 +1,42 @@
+{
+  "name": "heartbeat-dice",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b tsconfig.app.json && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev:server": "npm run dev -w @game/server",
+    "build:server": "npm run build -w @game/server",
+    "dev:all": "concurrently -n server,web -c magenta,cyan \"npm run dev:server\" \"npm run dev\"",
+    "e2e": "playwright test",
+    "simulate": "tsx scripts/simulate-game.ts"
+  },
+  "dependencies": {
+    "@colyseus/sdk": "^0.17.43",
+    "@game/shared": "*",
+    "framer-motion": "^13.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.5",
+    "concurrently": "^9.1.2",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.11",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.1",
+    "vitest": "^4.1.10"
+  }
+}

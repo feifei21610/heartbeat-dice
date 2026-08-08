@@ -1,0 +1,71 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-night: #14071a;
+  --color-night-2: #1f0b26;
+  --color-blush: #ff8fb1;
+  --color-rose: #ff5c8a;
+  --color-wine: #7b1f4b;
+  --color-gold: #ffd7a8;
+  --font-serif-cn: 'Songti SC', 'Noto Serif SC', ui-serif, serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, #4a1035 0%, transparent 60%),
+    radial-gradient(ellipse 70% 50% at 15% 100%, #2c0d3a 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 90% 80%, #5c1436 0%, transparent 65%),
+    #14071a;
+  background-attachment: fixed;
+  color: #ffeaf1;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+/* 飘动的心，纯装饰 */
+@keyframes float-up {
+  0% {
+    transform: translateY(0) scale(0.8);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: translateY(-90vh) scale(1.15);
+    opacity: 0;
+  }
+}
+
+.heart-float {
+  animation: float-up linear infinite;
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 24px -4px rgba(255, 92, 138, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 42px 2px rgba(255, 92, 138, 0.8);
+  }
+}
+
+.glow-pulse {
+  animation: glow-pulse 2.4s ease-in-out infinite;
+}
+
+/* framer-motion 的 height 0 → auto 需要外层 overflow hidden（playbook §11） */
+.collapse-wrap {
+  overflow: hidden;
+}

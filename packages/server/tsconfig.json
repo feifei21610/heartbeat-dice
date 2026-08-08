@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "outDir": "./build",
+    "rootDir": "..",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "sourceMap": true,
+    "paths": {
+      "@game/shared": ["../shared/src/index.ts"],
+      "@game/shared/types": ["../shared/src/types/game.ts"],
+      "@game/shared/constants": ["../shared/src/constants/game.ts"],
+      "@game/shared/game-engine": ["../shared/src/game-engine/index.ts"],
+      "@game/shared/data": ["../shared/src/data/truths.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "../shared/src/**/*.ts"]
+}

@@ -1,0 +1,29 @@
+{
+  "name": "@game/server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./build/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "npm run typecheck && node build.mjs",
+    "start": "node build/index.js"
+  },
+  "dependencies": {
+    "@colyseus/schema": "^4.0.30",
+    "@game/shared": "*",
+    "colyseus": "^0.17.10",
+    "cors": "^2.8.5",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "@colyseus/testing": "^0.17.11",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.28.1",
+    "tsx": "^4.23.11",
+    "typescript": "^5.9.3"
+  }
+}

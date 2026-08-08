@@ -1,0 +1,20 @@
+node_modules/
+dist/
+build/
+.DS_Store
+*.log
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# 本地环境覆盖
+.env
+.env.local
+.env.*.local
+!.env.development
+
+# TS 增量构建缓存
+*.tsbuildinfo
