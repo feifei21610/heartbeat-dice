@@ -16,6 +16,11 @@ primary_region = 'nrt'   # 东京，离国内近
   # ★ 保持 1 台常驻：scale-to-zero 省钱但有 2–5s 冷启动，
   #   朋友局临时开一把最烦的就是第一次连不上（playbook §8 坑 2）
   min_machines_running = 1
+  # ★ 必须锁死 1 台：房间状态在进程内存里，多机之间不共享。
+  #   Fly 默认会起 2 台做高可用，结果两个人落到不同机器上 →
+  #   房主建的房，客人 joinById 报 "room not found"（生产实测踩到）。
+  #   要多机就得接 @colyseus/redis-presence + redis-driver，两人局不值得。
+  max_machines_running = 1
   processes = ['app']
 
   [[http_service.checks]]
