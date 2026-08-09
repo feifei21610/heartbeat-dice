@@ -11,6 +11,7 @@ on:
       - 'vite.config.ts'
       - 'tsconfig*.json'
       - 'package.json'
+      - 'README.md'
       - '.github/workflows/deploy-frontend.yml'
   workflow_dispatch:
 
