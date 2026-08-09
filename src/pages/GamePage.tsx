@@ -1,21 +1,21 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { diceTotal } from '@game/shared/game-engine';
-import { SPICE_LABELS } from '@game/shared/constants';
-import type { SpiceLevel } from '@game/shared/types';
+import { diceTotal, winnerIndex } from '@game/shared/game-engine';
 import { useOnlineStore } from '../store/onlineStore';
 import { DicePair } from '../components/Dice';
 
 /**
  * 牌桌。★ UI 里一行游戏逻辑都不写（playbook §2.1）：
- *   「能不能掷」由服务端拒绝 + 本地 disabled 表达，
- *   不做乐观更新（playbook §3.1），按钮 disabled 就是防手感发虚的正确做法。
+ *   「能不能操作」由服务端拒绝 + 本地 disabled 表达，
+ *   不做乐观更新（playbook §3.1）。
+ *
+ * 一轮的流程：摇骰子 → 赢家从 4 道题里挑一道 → 输家回答 → 下一轮
  */
 export function GamePage() {
   const room = useOnlineStore((s) => s.room);
   const snapshot = useOnlineStore((s) => s.snapshot);
   const roll = useOnlineStore((s) => s.roll);
   const truthDone = useOnlineStore((s) => s.truthDone);
-  const rerollTruth = useOnlineStore((s) => s.rerollTruth);
+  const pickTruth = useOnlineStore((s) => s.pickTruth);
   const resetTie = useOnlineStore((s) => s.resetTie);
 
   if (!room || !snapshot) {
@@ -32,8 +32,9 @@ export function GamePage() {
   const otherP = snapshot.players[other];
   if (!myP || !otherP) return null;
 
-  const { roundPhase, loserIndex, currentTruth } = snapshot;
+  const { roundPhase, loserIndex, currentTruth, truthChoices } = snapshot;
   const iAmLoser = loserIndex === me;
+  const iAmWinner = winnerIndex(snapshot) === me;
   const waitingForOther = roundPhase === 'rolling' && myP.hasRolled && !otherP.hasRolled;
 
   return (
@@ -42,9 +43,6 @@ export function GamePage() {
       <div className="flex items-center justify-between text-sm">
         <span className="text-blush/60">
           第 <span className="text-gold">{snapshot.round}</span> / {snapshot.targetRounds} 轮
-        </span>
-        <span className="text-xs text-blush/40">
-          {SPICE_LABELS[snapshot.spiceLevel as SpiceLevel]}
         </span>
       </div>
 
@@ -55,7 +53,7 @@ export function GamePage() {
       </div>
 
       {/* 对方 */}
-      <div className="mt-6 flex flex-col items-center">
+      <div className="mt-5 flex flex-col items-center">
         <p className="mb-2.5 text-sm text-blush/70">
           {otherP.nickname}
           {!otherP.connected && <span className="ml-1.5 text-xs text-gold/70">断线中</span>}
@@ -64,8 +62,8 @@ export function GamePage() {
         <TotalLabel dice={otherP.dice} show={otherP.hasRolled} />
       </div>
 
-      {/* 中间：状态 / 真心话 */}
-      <div className="my-5 min-h-[132px] flex-1">
+      {/* 中间：状态 / 挑题 / 真心话 */}
+      <div className="my-4 min-h-[140px] flex-1">
         <AnimatePresence mode="wait">
           {roundPhase === 'rolling' && (
             <motion.div
@@ -103,6 +101,41 @@ export function GamePage() {
             </motion.div>
           )}
 
+          {/* ★ 赢家挑题：两边都看得到候选，只有赢家能点 */}
+          {roundPhase === 'picking' && (
+            <motion.div
+              key="picking"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+            >
+              <p className="text-center text-xs tracking-[0.2em] text-blush/50">
+                {iAmWinner
+                  ? `挑一道，让 ${otherP.nickname} 回答`
+                  : `${otherP.nickname} 正在给你挑题…`}
+              </p>
+              <div className="mt-3 space-y-2">
+                {truthChoices.map((c, i) => (
+                  <motion.button
+                    key={c.id}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.06 }}
+                    disabled={!iAmWinner}
+                    onClick={() => pickTruth(i)}
+                    className={`w-full rounded-2xl border px-4 py-3 text-left text-sm leading-snug transition ${
+                      iAmWinner
+                        ? 'border-rose/40 bg-wine/30 text-white active:scale-[0.98]'
+                        : 'border-blush/15 bg-night-2/40 text-blush/50'
+                    }`}
+                  >
+                    {c.text}
+                  </motion.button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
           {roundPhase === 'truth' && currentTruth && (
             <motion.div
               key={currentTruth.id}
@@ -113,27 +146,21 @@ export function GamePage() {
               className="rounded-3xl border border-rose/40 bg-gradient-to-br from-wine/60 to-night-2/80 p-5 shadow-[0_10px_40px_-12px_rgba(255,92,138,0.6)]"
             >
               <p className="text-center text-xs tracking-[0.25em] text-blush/50">
-                {iAmLoser ? '你输了，老实回答' : `${otherP.nickname} 要回答`}
+                {iAmLoser
+                  ? `${otherP.nickname} 挑了这道，老实回答`
+                  : `${otherP.nickname} 要回答`}
               </p>
               <p className="mt-3.5 text-center font-serif-cn text-xl leading-relaxed text-white">
                 {currentTruth.text}
               </p>
 
               {iAmLoser && (
-                <div className="mt-5 flex gap-2.5">
-                  <button
-                    onClick={rerollTruth}
-                    className="rounded-2xl border border-blush/30 px-4 py-2.5 text-sm text-blush/80"
-                  >
-                    换一题
-                  </button>
-                  <button
-                    onClick={truthDone}
-                    className="flex-1 rounded-2xl bg-gradient-to-r from-rose to-wine py-2.5 text-sm font-medium text-white"
-                  >
-                    我说完了
-                  </button>
-                </div>
+                <button
+                  onClick={truthDone}
+                  className="mt-5 w-full rounded-2xl bg-gradient-to-r from-rose to-wine py-2.5 text-sm font-medium text-white"
+                >
+                  我说完了
+                </button>
               )}
               {!iAmLoser && (
                 <p className="mt-4 text-center text-xs text-blush/45">
@@ -153,7 +180,7 @@ export function GamePage() {
       </div>
 
       {/* 动作区 */}
-      <div className="mt-5">
+      <div className="mt-4">
         <button
           disabled={roundPhase !== 'rolling' || myP.hasRolled}
           onClick={roll}

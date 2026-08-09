@@ -1,5 +1,5 @@
 import { ColyseusSDK, type Room } from '@colyseus/sdk';
-import type { GameState, SpiceLevel } from '@game/shared/types';
+import type { GameState } from '@game/shared/types';
 
 /**
  * 网络层：把 Colyseus 封装成事件发射器，store 只订阅事件。
@@ -34,7 +34,6 @@ export interface FullStateSync {
   isHost: boolean;
   myPlayerIndex: number;
   targetRounds: number;
-  spiceLevel: SpiceLevel;
   players: PlayerBrief[];
   snapshot: GameState | null;
 }
@@ -61,7 +60,7 @@ type Events = {
   connectionLost: { reason: 'socket' | 'offline' };
   /** 重连尝试进度 */
   reconnecting: { attempt: number };
-  schemaChanged: { targetRounds: number; spiceLevel: SpiceLevel; roomPhase: string };
+  schemaChanged: { targetRounds: number; roomPhase: string };
 };
 
 type Handler<K extends keyof Events> = (payload: Events[K]) => void;
@@ -117,18 +116,12 @@ class NetworkClient {
 
   // ------------------------------------------------------------- connect
 
-  async createRoom(opts: {
-    nickname: string;
-    roomCode: string;
-    targetRounds: number;
-    spiceLevel: SpiceLevel;
-  }) {
+  async createRoom(opts: { nickname: string; roomCode: string; targetRounds: number }) {
     const room = await this.withTimeout(
       this.sdk.joinOrCreate(ROOM_NAME, {
         nickname: opts.nickname,
         roomCode: opts.roomCode,
         targetRounds: opts.targetRounds,
-        spiceLevel: opts.spiceLevel,
       }),
     );
     this.adopt(room, opts.nickname);
@@ -195,7 +188,6 @@ class NetworkClient {
     room.onStateChange((state: any) => {
       this.emit('schemaChanged', {
         targetRounds: state.targetRounds,
-        spiceLevel: state.spiceLevel,
         roomPhase: state.roomPhase,
       });
     });
@@ -228,8 +220,12 @@ class NetworkClient {
 
   // ------------------------------------------------------------- send
 
-  sendAction(type: 'Roll' | 'TruthDone' | 'RerollTruth' | 'ResetTie') {
+  sendAction(type: 'Roll' | 'TruthDone' | 'ResetTie') {
     this.room?.send('action', { type });
+  }
+
+  pickTruth(choiceIndex: number) {
+    this.room?.send('action', { type: 'PickTruth', choiceIndex });
   }
 
   startGame() {
@@ -240,7 +236,7 @@ class NetworkClient {
     this.room?.send('playAgain');
   }
 
-  updateConfig(cfg: { targetRounds?: number; spiceLevel?: SpiceLevel }) {
+  updateConfig(cfg: { targetRounds?: number }) {
     this.room?.send('updateConfig', cfg);
   }
 

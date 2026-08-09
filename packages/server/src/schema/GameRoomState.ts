@@ -33,7 +33,6 @@ export class GameRoomState extends Schema {
 
   /** 房间配置：来自客户端但一律钳制 */
   @type('number') targetRounds = 7;
-  @type('string') spiceLevel = 'flirty';
 
   @type('number') round = 1;
   @type([PlayerSchema]) players = new ArraySchema<PlayerSchema>();

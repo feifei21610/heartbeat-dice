@@ -1,14 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import type { SpiceLevel } from '@game/shared/types';
-import {
-  DEFAULT_ROUNDS,
-  MAX_ROUNDS,
-  MIN_ROUNDS,
-  SPICE_HINTS,
-} from '@game/shared/constants';
+import { DEFAULT_ROUNDS, MAX_ROUNDS, MIN_ROUNDS } from '@game/shared/constants';
 import { useOnlineStore } from '../store/onlineStore';
-import { DeckPicker } from '../components/DeckPicker';
 
 export function HomePage() {
   const createRoom = useOnlineStore((s) => s.createRoom);
@@ -19,7 +12,6 @@ export function HomePage() {
   const [nickname, setNickname] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [rounds, setRounds] = useState(DEFAULT_ROUNDS);
-  const [spice, setSpice] = useState<SpiceLevel>('flirty');
 
   // 记住昵称，下次不用重打
   useEffect(() => {
@@ -104,14 +96,6 @@ export function HomePage() {
               />
             </div>
 
-            <div>
-              <span className="text-xs tracking-wider text-blush/60">聊什么</span>
-              <div className="mt-2">
-                <DeckPicker value={spice} onChange={setSpice} />
-              </div>
-              <p className="mt-2 text-center text-xs text-blush/50">{SPICE_HINTS[spice]}</p>
-            </div>
-
             <div className="flex gap-2.5">
               <button
                 onClick={() => setMode('pick')}
@@ -123,7 +107,7 @@ export function HomePage() {
                 disabled={connecting}
                 onClick={() => {
                   remember();
-                  void createRoom(nickname.trim(), rounds, spice);
+                  void createRoom(nickname.trim(), rounds);
                 }}
                 className="flex-1 rounded-2xl bg-gradient-to-r from-rose to-wine py-3 text-base font-medium text-white shadow-lg disabled:opacity-50"
               >
@@ -169,9 +153,9 @@ export function HomePage() {
       </motion.div>
 
       <p className="mt-6 text-center text-xs leading-relaxed text-blush/35">
-        两个人各摇两颗骰子，加起来小的那个人抽一题
+        两个人各摇两颗骰子，加起来小的那个人认罚
         <br />
-        不许赖账 · 不许换题两次
+        赢的人从四道题里挑一道 · 不许赖账
       </p>
     </div>
   );

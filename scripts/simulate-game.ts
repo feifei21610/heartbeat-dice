@@ -6,7 +6,13 @@
  * 用途：跑几百个 seed 找引擎崩溃、复现用户报的局面。
  * 因为 §2.4 的 seeded RNG，同一个 seed 永远得到同一局。
  */
-import { applyAction, diceTotal, leaderIndex, startNewGame } from '../packages/shared/src/game-engine/index.js';
+import {
+  applyAction,
+  diceTotal,
+  leaderIndex,
+  startNewGame,
+  winnerIndex,
+} from '../packages/shared/src/game-engine/index.js';
 import type { GameState } from '../packages/shared/src/types/game.js';
 
 const args = process.argv.slice(2);
@@ -31,9 +37,15 @@ function play(state: GameState, log: (s: string) => void): GameState {
     } else if (s.roundPhase === 'tie') {
       log('  平局，重掷');
       s = applyAction(s, { type: 'ResetTie', playerIndex: 0 });
+    } else if (s.roundPhase === 'picking') {
+      // 模拟器里赢家一律挑第一道，保证可复现
+      const w = winnerIndex(s);
+      log(`  ${s.players[w].nickname} 赢，候选：`);
+      s.truthChoices.forEach((c, i) => log(`    ${i + 1}. ${c.text}`));
+      s = applyAction(s, { type: 'PickTruth', playerIndex: w, choiceIndex: 0 });
     } else if (s.roundPhase === 'truth') {
       const loser = s.players[s.loserIndex];
-      log(`  → ${loser.nickname} 输了，题目：${s.currentTruth?.text}`);
+      log(`  → ${loser.nickname} 要答：${s.currentTruth?.text}`);
       s = applyAction(s, { type: 'TruthDone', playerIndex: s.loserIndex });
       if (s.phase === 'playing') log(`\n第 ${s.round} 轮`);
     } else {
@@ -46,7 +58,7 @@ function play(state: GameState, log: (s: string) => void): GameState {
 const log = verbose ? (m: string) => console.log(m) : () => {};
 
 const initial = startNewGame({ seed, targetRounds: rounds, nicknames: ['tangni', 'harriet'] });
-log(`seed=${seed} rounds=${rounds} 尺度=${initial.spiceLevel}\n\n第 1 轮`);
+log(`seed=${seed} rounds=${rounds}\n\n第 1 轮`);
 
 const final = play(initial, log);
 const winner = leaderIndex(final);

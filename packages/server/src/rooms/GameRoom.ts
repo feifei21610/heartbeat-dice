@@ -6,13 +6,11 @@ import {
   randomSeed,
   startNewGame,
 } from '@game/shared/game-engine';
-import type { Action, GameState, SpiceLevel } from '@game/shared/types';
-import { DEEP_LEVELS, SPICE_LEVELS } from '@game/shared/types';
+import type { Action, GameState } from '@game/shared/types';
 import { RECONNECT_WINDOW_SECONDS } from '@game/shared/constants';
 import { GameRoomState, PlayerSchema } from '../schema/GameRoomState.js';
 
 const PLAYER_COUNT = 2;
-const VALID_SPICE: SpiceLevel[] = [...SPICE_LEVELS, ...DEEP_LEVELS];
 
 /** 每 session 的限流窗口 */
 const RATE_LIMIT_WINDOW_MS = 1000;
@@ -48,7 +46,6 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.state = new GameRoomState();
     // 房间配置一律钳制，不信客户端
     this.state.targetRounds = clampRounds(Number(options?.targetRounds));
-    this.state.spiceLevel = this.sanitizeSpice(options?.spiceLevel);
     this.state.roomPhase = 'lobby';
 
     this.onMessage('action', (client, message) => this.handlePlayerAction(client, message));
@@ -222,9 +219,6 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     if (message?.targetRounds !== undefined) {
       this.state.targetRounds = clampRounds(Number(message.targetRounds));
     }
-    if (message?.spiceLevel !== undefined) {
-      this.state.spiceLevel = this.sanitizeSpice(message.spiceLevel);
-    }
   }
 
   private handleStartGame(client: Client) {
@@ -251,7 +245,6 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     this.game = startNewGame({
       seed: randomSeed(),
       targetRounds: this.state.targetRounds,
-      spiceLevel: this.state.spiceLevel as SpiceLevel,
       nicknames,
     });
     this.state.roomPhase = 'playing';
@@ -273,12 +266,19 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     }
 
     const type = message?.type;
-    if (type !== 'Roll' && type !== 'TruthDone' && type !== 'RerollTruth' && type !== 'ResetTie') {
+    if (type !== 'Roll' && type !== 'PickTruth' && type !== 'TruthDone' && type !== 'ResetTie') {
       return client.send('error', { message: '不认识这个动作' });
     }
 
-    // 闸 2：动作归属 —— playerIndex 一律由服务端按 session 填，忽略客户端传的
-    const action = { type, playerIndex: info.playerIndex } as Action;
+    // 闸 2：动作归属 —— playerIndex 一律由服务端按 session 填，忽略客户端传的。
+    //   choiceIndex 是客户端唯一有发言权的参数，钳成整数后交给引擎判合法性。
+    const action = {
+      type,
+      playerIndex: info.playerIndex,
+      ...(type === 'PickTruth'
+        ? { choiceIndex: Math.trunc(Number(message?.choiceIndex)) || 0 }
+        : {}),
+    } as Action;
 
     // 闸 3：合法性 —— 重跑同一份引擎，靠恒等判断（见引擎注释）
     const next = applyAction(this.game, action);
@@ -314,7 +314,6 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
       isHost: this.state.hostSessionId === client.sessionId,
       myPlayerIndex: info?.playerIndex ?? -1,
       targetRounds: this.state.targetRounds,
-      spiceLevel: this.state.spiceLevel,
       players: this.state.players.map((p) => ({
         nickname: p.nickname,
         playerIndex: p.playerIndex,
@@ -372,7 +371,4 @@ export class GameRoom extends Room<{ state: GameRoomState }> {
     return s.length > 0 ? s : '神秘人';
   }
 
-  private sanitizeSpice(raw: unknown): SpiceLevel {
-    return VALID_SPICE.includes(raw as SpiceLevel) ? (raw as SpiceLevel) : 'flirty';
-  }
 }

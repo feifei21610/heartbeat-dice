@@ -6,15 +6,16 @@
  */
 
 /**
- * 题库档位。前三档按「尺度」分（越靠后越暧昧），
- * 后面几档按「话题领域」分，用来深聊。
+ * 题目的话题分类。
+ *
+ * ★ 这只是给题目打的标签，用于组织题库和历史记录 —— 玩家不选分类，
+ *   抽题是从全部题目里纯随机抽（见 drawTruthChoices）。
+ *   前端也不展示分类。
  */
-export type SpiceLevel =
-  // 尺度档
+export type TruthCategory =
   | 'sweet'
   | 'flirty'
   | 'heart'
-  // 深聊档（按领域）
   | 'memory'
   | 'daily'
   | 'feelings'
@@ -22,10 +23,17 @@ export type SpiceLevel =
   | 'values'
   | 'future';
 
-/** 尺度档：偏调情 */
-export const SPICE_LEVELS = ['sweet', 'flirty', 'heart'] as const;
-/** 深聊档：偏交心 */
-export const DEEP_LEVELS = ['memory', 'daily', 'feelings', 'past', 'values', 'future'] as const;
+export const TRUTH_CATEGORIES = [
+  'sweet',
+  'flirty',
+  'heart',
+  'memory',
+  'daily',
+  'feelings',
+  'past',
+  'values',
+  'future',
+] as const;
 
 /** 玩家在一局里的角色。remote = 联机对面那个人。 */
 export type PlayerType = 'human' | 'remote';
@@ -50,7 +58,9 @@ export type RoundPhase =
   | 'rolling'
   /** 都掷完了，正在展示点数与胜负 */
   | 'reveal'
-  /** 输家在回答真心话 */
+  /** 赢家正在从候选里挑一道题给输家 */
+  | 'picking'
+  /** 输家在回答赢家挑的那道题 */
   | 'truth'
   /** 平局，需要重掷 */
   | 'tie';
@@ -60,7 +70,7 @@ export type GamePhase = 'playing' | 'gameOver';
 export interface TruthCard {
   id: string;
   text: string;
-  level: SpiceLevel;
+  category: TruthCategory;
 }
 
 export interface RoundRecord {
@@ -86,11 +96,12 @@ export interface GameState {
   targetRounds: number;
   phase: GamePhase;
   roundPhase: RoundPhase;
-  spiceLevel: SpiceLevel;
 
   /** 本轮输家索引；未判定时为 -1 */
   loserIndex: number;
-  /** 本轮抽到的真心话；未抽时为 null */
+  /** 赢家可挑的候选题（picking 阶段有值）。两边都看得到。 */
+  truthChoices: TruthCard[];
+  /** 赢家挑定的那道题；未挑时为 null */
   currentTruth: TruthCard | null;
   /** 已经用过的题目 id，避免重复 */
   usedTruthIds: string[];
@@ -101,16 +112,15 @@ export interface GameState {
 export type Action =
   /** 掷骰子。playerIndex 由服务端按 session 填，客户端传的会被忽略 */
   | { type: 'Roll'; playerIndex: number }
-  /** 输家答完了真心话，进入下一轮 */
+  /** 赢家挑定一道题（choiceIndex 指向 truthChoices） */
+  | { type: 'PickTruth'; playerIndex: number; choiceIndex: number }
+  /** 输家答完了，进入下一轮 */
   | { type: 'TruthDone'; playerIndex: number }
-  /** 换一道题（输家有一次换题机会时用） */
-  | { type: 'RerollTruth'; playerIndex: number }
   /** 平局后重掷 */
   | { type: 'ResetTie'; playerIndex: number };
 
 export interface GameOptions {
   targetRounds: number;
-  spiceLevel: SpiceLevel;
   seed: number;
   nicknames: [string, string];
 }

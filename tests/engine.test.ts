@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { applyAction, startNewGame, createRng, diceTotal, findLoserIndex } from '@game/shared/game-engine';
+import {
+  applyAction,
+  startNewGame,
+  createRng,
+  diceTotal,
+  findLoserIndex,
+  winnerIndex,
+} from '@game/shared/game-engine';
 import type { GameState } from '@game/shared/types';
-import { DEEP_LEVELS, SPICE_LEVELS } from '@game/shared/types';
-import { SPICE_HINTS, SPICE_LABELS } from '@game/shared/constants';
-import { getTruthDeck } from '@game/shared/data';
+import { TRUTH_CATEGORIES } from '@game/shared/types';
+import { TRUTH_CHOICE_COUNT } from '@game/shared/constants';
+import { ALL_TRUTHS, getTruthDeck } from '@game/shared/data';
 
 /** 反复掷到双方都掷完，返回结果状态。 */
 function rollBoth(s: GameState): GameState {
@@ -12,13 +19,19 @@ function rollBoth(s: GameState): GameState {
   return next;
 }
 
-/** 找一个不平局的 seed，掷完返回 [state, loserIndex] */
+/** 找一个不平局的 seed，掷完停在 picking 阶段 */
 function seedWithDecisiveRoll(): GameState {
   for (let seed = 1; seed < 500; seed++) {
     const s = rollBoth(startNewGame({ seed, targetRounds: 5 }));
-    if (s.roundPhase === 'truth') return s;
+    if (s.roundPhase === 'picking') return s;
   }
   throw new Error('no decisive seed found');
+}
+
+/** 掷完并让赢家挑第一道题 → 停在 truth 阶段 */
+function seedAtTruth(): GameState {
+  const s = seedWithDecisiveRoll();
+  return applyAction(s, { type: 'PickTruth', playerIndex: winnerIndex(s), choiceIndex: 0 });
 }
 
 function seedWithTie(): GameState {
@@ -105,11 +118,32 @@ describe('illegal actions return the identical object', () => {
     expect(applyAction(s, { type: 'TruthDone', playerIndex: 0 })).toBe(s);
   });
 
-  it('the winner cannot answer or reroll the truth', () => {
-    const s = seedWithDecisiveRoll();
-    const winner = s.loserIndex === 0 ? 1 : 0;
+  it('the winner cannot answer the truth', () => {
+    const s = seedAtTruth();
+    const winner = winnerIndex(s);
     expect(applyAction(s, { type: 'TruthDone', playerIndex: winner })).toBe(s);
-    expect(applyAction(s, { type: 'RerollTruth', playerIndex: winner })).toBe(s);
+  });
+
+  it('the loser cannot pick their own question', () => {
+    const s = seedWithDecisiveRoll();
+    expect(
+      applyAction(s, { type: 'PickTruth', playerIndex: s.loserIndex, choiceIndex: 0 }),
+    ).toBe(s);
+  });
+
+  it('PickTruth with an out-of-range index is rejected', () => {
+    const s = seedWithDecisiveRoll();
+    const w = winnerIndex(s);
+    expect(applyAction(s, { type: 'PickTruth', playerIndex: w, choiceIndex: -1 })).toBe(s);
+    expect(applyAction(s, { type: 'PickTruth', playerIndex: w, choiceIndex: 99 })).toBe(s);
+  });
+
+  it('PickTruth twice is rejected (already left picking)', () => {
+    const s = seedWithDecisiveRoll();
+    const w = winnerIndex(s);
+    const once = applyAction(s, { type: 'PickTruth', playerIndex: w, choiceIndex: 0 });
+    expect(once).not.toBe(s);
+    expect(applyAction(once, { type: 'PickTruth', playerIndex: w, choiceIndex: 1 })).toBe(once);
   });
 
   it('ResetTie outside a tie is rejected', () => {
@@ -154,13 +188,21 @@ describe('rolling and scoring', () => {
     expect(s.players[expectedLoser === 0 ? 1 : 0].score).toBe(1);
   });
 
-  it('the loser gets a truth card from the selected deck', () => {
+  it('a decisive roll lands in picking with a set of choices', () => {
     const s = seedWithDecisiveRoll();
-    expect(s.roundPhase).toBe('truth');
-    expect(s.currentTruth).not.toBeNull();
-    const deck = getTruthDeck(s.spiceLevel);
-    expect(deck.some((c) => c.id === s.currentTruth!.id)).toBe(true);
-    expect(s.usedTruthIds).toContain(s.currentTruth!.id);
+    expect(s.roundPhase).toBe('picking');
+    expect(s.currentTruth).toBeNull();
+    expect(s.truthChoices).toHaveLength(TRUTH_CHOICE_COUNT);
+  });
+
+  it('choices come from the full library and are all distinct', () => {
+    const s = seedWithDecisiveRoll();
+    const ids = s.truthChoices.map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const c of s.truthChoices) {
+      expect(ALL_TRUTHS.some((x) => x.id === c.id)).toBe(true);
+      expect(s.usedTruthIds).toContain(c.id);
+    }
   });
 
   it('equal totals produce a tie with no score change', () => {
@@ -205,60 +247,99 @@ describe('tie handling', () => {
   });
 });
 
-describe('truth reroll', () => {
-  it('reroll swaps the card', () => {
+describe('winner picks the question', () => {
+  it('picking moves to the truth phase with that exact question', () => {
     const s = seedWithDecisiveRoll();
-    const rerolled = applyAction(s, { type: 'RerollTruth', playerIndex: s.loserIndex });
-    expect(rerolled.currentTruth!.id).not.toBe(s.currentTruth!.id);
-    expect(rerolled.usedTruthIds).toHaveLength(2);
+    const w = winnerIndex(s);
+    const chosen = s.truthChoices[2];
+    const next = applyAction(s, { type: 'PickTruth', playerIndex: w, choiceIndex: 2 });
+    expect(next.roundPhase).toBe('truth');
+    expect(next.currentTruth).toEqual(chosen);
   });
 
-  it('reroll is unlimited', () => {
-    const s = seedWithDecisiveRoll();
-    let cur = s;
-    const seenIds = new Set([s.currentTruth!.id]);
-    for (let i = 0; i < 12; i++) {
-      const next = applyAction(cur, { type: 'RerollTruth', playerIndex: cur.loserIndex });
-      expect(next).not.toBe(cur);
-      seenIds.add(next.currentTruth!.id);
-      cur = next;
-    }
-    // 每次都真的换了一张牌，而不是空转
-    expect(seenIds.size).toBeGreaterThan(5);
+  it('choices are cleared once picked, so nothing stale renders', () => {
+    const s = seedAtTruth();
+    expect(s.truthChoices).toEqual([]);
   });
 
-  it('reroll never leaves the truth phase', () => {
+  it('any of the choices can be picked', () => {
     const s = seedWithDecisiveRoll();
-    let cur = s;
-    for (let i = 0; i < 8; i++) {
-      cur = applyAction(cur, { type: 'RerollTruth', playerIndex: cur.loserIndex });
+    const w = winnerIndex(s);
+    for (let i = 0; i < s.truthChoices.length; i++) {
+      const next = applyAction(s, { type: 'PickTruth', playerIndex: w, choiceIndex: i });
+      expect(next.currentTruth!.id).toBe(s.truthChoices[i].id);
     }
-    expect(cur.roundPhase).toBe('truth');
-    expect(cur.loserIndex).toBe(s.loserIndex);
-    expect(cur.round).toBe(s.round);
   });
 
-  it('rerolling past the deck size reshuffles instead of stalling', () => {
-    // 用最小的一档，确保能在合理次数内抽干
-    let s = startNewGame({ seed: 11, targetRounds: 3, spiceLevel: 'sweet' });
-    s = applyAction(s, { type: 'Roll', playerIndex: 0 });
-    s = applyAction(s, { type: 'Roll', playerIndex: 1 });
-    if (s.roundPhase !== 'truth') return; // 平局就跳过，另有专门用例
+  it('winnerIndex is the other seat, and -1 before a decision', () => {
+    const fresh = startNewGame({ seed: 3 });
+    expect(winnerIndex(fresh)).toBe(-1);
+    const s = seedWithDecisiveRoll();
+    expect(winnerIndex(s)).toBe(s.loserIndex === 0 ? 1 : 0);
+  });
 
-    const deckSize = getTruthDeck('sweet').length;
-    let cur = s;
-    for (let i = 0; i < deckSize + 5; i++) {
-      const next = applyAction(cur, { type: 'RerollTruth', playerIndex: cur.loserIndex });
-      expect(next).not.toBe(cur);
-      expect(next.currentTruth).not.toBeNull();
-      cur = next;
+  it('a tie offers no choices', () => {
+    const tie = seedWithTie();
+    expect(tie.truthChoices).toEqual([]);
+    expect(tie.currentTruth).toBeNull();
+  });
+
+  it('every round offers a fresh set of choices', () => {
+    let s = seedAtTruth();
+    const firstIds = new Set(s.usedTruthIds);
+    s = applyAction(s, { type: 'TruthDone', playerIndex: s.loserIndex });
+    expect(s.truthChoices).toEqual([]);
+
+    // 下一轮摇出胜负后应该拿到全新的候选
+    let guard = 0;
+    while (s.roundPhase !== 'picking' && guard++ < 40) {
+      if (s.roundPhase === 'tie') {
+        s = applyAction(s, { type: 'ResetTie', playerIndex: 0 });
+        continue;
+      }
+      const idx = s.players.findIndex((p) => !p.hasRolled);
+      s = applyAction(s, { type: 'Roll', playerIndex: idx });
     }
+    expect(s.truthChoices).toHaveLength(TRUTH_CHOICE_COUNT);
+    for (const c of s.truthChoices) {
+      expect(firstIds.has(c.id)).toBe(false);
+    }
+  });
+
+  it('never repeats a question across a long game, and never stalls', () => {
+    // 打满远超一组候选的轮数，确认抽题池会重洗而不是卡死
+    let s = startNewGame({ seed: 2024, targetRounds: 20 });
+    const seen: string[] = [];
+    let guard = 0;
+    while (s.phase === 'playing' && guard++ < 800) {
+      if (s.roundPhase === 'rolling') {
+        const idx = s.players.findIndex((p) => !p.hasRolled);
+        s = applyAction(s, { type: 'Roll', playerIndex: idx });
+      } else if (s.roundPhase === 'tie') {
+        s = applyAction(s, { type: 'ResetTie', playerIndex: 0 });
+      } else if (s.roundPhase === 'picking') {
+        expect(s.truthChoices).toHaveLength(TRUTH_CHOICE_COUNT);
+        s = applyAction(s, {
+          type: 'PickTruth',
+          playerIndex: winnerIndex(s),
+          choiceIndex: 0,
+        });
+      } else if (s.roundPhase === 'truth') {
+        seen.push(s.currentTruth!.id);
+        s = applyAction(s, { type: 'TruthDone', playerIndex: s.loserIndex });
+      } else {
+        break;
+      }
+    }
+    expect(s.phase).toBe('gameOver');
+    expect(seen).toHaveLength(20);
+    expect(new Set(seen).size).toBe(seen.length);
   });
 });
 
 describe('round advance and game over', () => {
   it('TruthDone records history and advances the round', () => {
-    const s = seedWithDecisiveRoll();
+    const s = seedAtTruth();
     const next = applyAction(s, { type: 'TruthDone', playerIndex: s.loserIndex });
     expect(next.round).toBe(s.round + 1);
     expect(next.roundPhase).toBe('rolling');
@@ -273,13 +354,13 @@ describe('round advance and game over', () => {
   });
 
   it('history preserves the dice totals of that round', () => {
-    const s = seedWithDecisiveRoll();
+    const s = seedAtTruth();
     const next = applyAction(s, { type: 'TruthDone', playerIndex: s.loserIndex });
     expect(next.history[0].totals).toEqual(s.players.map((p) => diceTotal(p.dice)));
   });
 
   it('scores carry across rounds', () => {
-    const s = seedWithDecisiveRoll();
+    const s = seedAtTruth();
     const scoresBefore = s.players.map((p) => p.score);
     const next = applyAction(s, { type: 'TruthDone', playerIndex: s.loserIndex });
     expect(next.players.map((p) => p.score)).toEqual(scoresBefore);
@@ -298,6 +379,12 @@ describe('full game playthrough', () => {
         s = applyAction(s, { type: 'Roll', playerIndex: idx });
       } else if (s.roundPhase === 'tie') {
         s = applyAction(s, { type: 'ResetTie', playerIndex: 0 });
+      } else if (s.roundPhase === 'picking') {
+        s = applyAction(s, {
+          type: 'PickTruth',
+          playerIndex: winnerIndex(s),
+          choiceIndex: 0,
+        });
       } else if (s.roundPhase === 'truth') {
         s = applyAction(s, { type: 'TruthDone', playerIndex: s.loserIndex });
       } else {
@@ -348,8 +435,8 @@ describe('full game playthrough', () => {
   });
 });
 
-describe('truth deck integrity', () => {
-  const ALL_LEVELS = [...SPICE_LEVELS, ...DEEP_LEVELS];
+describe('truth library integrity', () => {
+  const ALL_LEVELS = TRUTH_CATEGORIES;
 
   it('every deck has unique ids and non-empty text', () => {
     for (const level of ALL_LEVELS) {
@@ -358,7 +445,7 @@ describe('truth deck integrity', () => {
       expect(new Set(deck.map((c) => c.id)).size).toBe(deck.length);
       for (const c of deck) {
         expect(c.text.trim().length).toBeGreaterThan(0);
-        expect(c.level).toBe(level);
+        expect(c.category).toBe(level);
       }
     }
   });
@@ -383,21 +470,23 @@ describe('truth deck integrity', () => {
     }
   });
 
-  it('every level has a label and a hint', () => {
+  it('ALL_TRUTHS covers every category and is big enough to draw from', () => {
+    expect(ALL_TRUTHS.length).toBe(
+      ALL_LEVELS.reduce((n, l) => n + getTruthDeck(l).length, 0),
+    );
+    expect(ALL_TRUTHS.length).toBeGreaterThan(TRUTH_CHOICE_COUNT * 10);
     for (const level of ALL_LEVELS) {
-      expect(SPICE_LABELS[level]?.length).toBeGreaterThan(0);
-      expect(SPICE_HINTS[level]?.length).toBeGreaterThan(0);
+      expect(ALL_TRUTHS.some((c) => c.category === level)).toBe(true);
     }
   });
 
-  it('all nine decks are reachable and playable', () => {
-    for (const level of ALL_LEVELS) {
-      const s = startNewGame({ seed: 7, targetRounds: 3, spiceLevel: level });
-      expect(s.spiceLevel).toBe(level);
-      const rolled = rollBoth(s);
-      if (rolled.roundPhase === 'truth') {
-        expect(rolled.currentTruth!.level).toBe(level);
-      }
+  it('random draws reach across categories, not just one', () => {
+    // 纯随机抽题应该摸到多个分类；只碰到一两个说明抽样有偏
+    const seenCategories = new Set<string>();
+    for (let seed = 1; seed <= 40; seed++) {
+      const s = rollBoth(startNewGame({ seed, targetRounds: 3 }));
+      for (const c of s.truthChoices) seenCategories.add(c.category);
     }
+    expect(seenCategories.size).toBeGreaterThan(4);
   });
 });

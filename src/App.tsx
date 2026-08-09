@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { RECONNECT_MAX_ATTEMPTS } from '@game/shared/constants';
 import { ErrorBar, ReconnectingBanner, Toast } from './components/Banners';
 import { FloatingHearts } from './components/FloatingHearts';
 import { GameOverPage } from './pages/GameOverPage';
@@ -16,6 +17,7 @@ export function App() {
   const dismissError = useOnlineStore((s) => s.dismissError);
   const dismissToast = useOnlineStore((s) => s.dismissToast);
   const tryResumeSession = useOnlineStore((s) => s.tryResumeSession);
+  const giveUpReconnect = useOnlineStore((s) => s.giveUpReconnect);
 
   // 刷新页面后自动回到牌桌
   useEffect(() => {
@@ -31,7 +33,7 @@ export function App() {
         <GamePage />
       ) : (
         <div className="relative z-10 flex min-h-full items-center justify-center">
-          <p className="animate-pulse text-blush/60">正在把你拉回牌桌…</p>
+          <p className="animate-pulse text-blush/60">正在回到牌桌…</p>
         </div>
       );
     }
@@ -56,7 +58,13 @@ export function App() {
   return (
     <div className="min-h-full">
       <FloatingHearts />
-      {reconnecting && <ReconnectingBanner attempt={reconnectAttempt} />}
+      {reconnecting && (
+        <ReconnectingBanner
+          attempt={reconnectAttempt}
+          total={RECONNECT_MAX_ATTEMPTS}
+          onGiveUp={giveUpReconnect}
+        />
+      )}
       <ErrorBar message={errorMessage} onDismiss={dismissError} />
       <Toast message={toast} onDismiss={dismissToast} />
       {body()}

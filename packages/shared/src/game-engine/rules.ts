@@ -1,6 +1,6 @@
 import type { GameState, Player, TruthCard } from '../types/game.js';
-import { DICE_FACES, DICE_PER_ROLL } from '../constants/game.js';
-import { getTruthDeck } from '../data/truths.js';
+import { DICE_FACES, DICE_PER_ROLL, TRUTH_CHOICE_COUNT } from '../constants/game.js';
+import { ALL_TRUTHS } from '../data/truths.js';
 import { createRng } from './rng.js';
 
 /**
@@ -36,16 +36,29 @@ export function findLoserIndex(players: Player[]): number {
   return losers.length === 1 ? losers[0] : -1;
 }
 
-/** 只有本轮输家能操作真心话（答完 / 换题） */
-export function canActOnTruth(state: GameState, playerIndex: number): boolean {
+/** 本轮赢家索引；平局或未判定时为 -1 */
+export function winnerIndex(state: GameState): number {
+  if (state.loserIndex < 0) return -1;
+  return state.loserIndex === 0 ? 1 : 0;
+}
+
+/** 只有赢家能挑题，且必须在 picking 阶段 */
+export function canPickTruth(
+  state: GameState,
+  playerIndex: number,
+  choiceIndex: number,
+): boolean {
+  if (state.phase !== 'playing') return false;
+  if (state.roundPhase !== 'picking') return false;
+  if (winnerIndex(state) !== playerIndex) return false;
+  return choiceIndex >= 0 && choiceIndex < state.truthChoices.length;
+}
+
+/** 只有本轮输家能宣布答完 */
+export function canFinishTruth(state: GameState, playerIndex: number): boolean {
   if (state.phase !== 'playing') return false;
   if (state.roundPhase !== 'truth') return false;
   return state.loserIndex === playerIndex;
-}
-
-/** 换题不限次数：想换到顺眼的为止 */
-export function canRerollTruth(state: GameState, playerIndex: number): boolean {
-  return canActOnTruth(state, playerIndex);
 }
 
 /** 平局后任一方都可以点重掷 */
@@ -56,20 +69,32 @@ export function canResetTie(state: GameState, playerIndex: number): boolean {
 }
 
 /**
- * 抽一道没用过的题。牌库抽干时清空 usedTruthIds 重新洗。
- * 返回 [题目, 新的 rngCursor, 新的 usedTruthIds]。
+ * 从全部题目里**纯随机**抽 N 道互不相同的候选，交给赢家挑。
+ *
+ * 池子抽干时清空 usedTruthIds 重新洗。
+ * 返回 [候选题, 新的 rngCursor, 新的 usedTruthIds]。
  */
-export function drawTruth(state: GameState): [TruthCard, number, string[]] {
-  const deck = getTruthDeck(state.spiceLevel);
+export function drawTruthChoices(state: GameState): [TruthCard[], number, string[]] {
   let used = state.usedTruthIds;
-  let pool = deck.filter((c) => !used.includes(c.id));
-  if (pool.length === 0) {
+  let pool = ALL_TRUTHS.filter((c) => !used.includes(c.id));
+
+  // 剩的不够凑一组候选了 → 重新洗一遍
+  if (pool.length < TRUTH_CHOICE_COUNT) {
     used = [];
-    pool = deck;
+    pool = ALL_TRUTHS;
   }
+
   const rng = createRng(state.seed, state.rngCursor);
-  const card = pool[rng.nextInt(pool.length)];
-  return [card, rng.cursor(), [...used, card.id]];
+  const remaining = [...pool];
+  const picked: TruthCard[] = [];
+  const count = Math.min(TRUTH_CHOICE_COUNT, remaining.length);
+  for (let i = 0; i < count; i++) {
+    const idx = rng.nextInt(remaining.length);
+    picked.push(remaining[idx]);
+    remaining.splice(idx, 1); // 抽出不放回，保证候选之间不重复
+  }
+
+  return [picked, rng.cursor(), [...used, ...picked.map((c) => c.id)]];
 }
 
 /** 掷两颗骰子。返回 [骰子, 新的 rngCursor]。 */

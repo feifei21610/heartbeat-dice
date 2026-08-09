@@ -56,9 +56,9 @@ test('两个人能从建房打到出真心话', async ({ browser }) => {
 
   await b.page.getByRole('button', { name: '摇骰子' }).click();
 
-  // 判出胜负后：出真心话，或平局要重摇
-  const truthOrTie = a.page.locator('text=/老实回答|要回答|一样大/');
-  await expect(truthOrTie.first()).toBeVisible();
+  // 判出胜负后：赢家开始挑题，或平局要重摇
+  const pickingOrTie = a.page.locator('text=/挑一道，让|正在给你挑题|一样大/');
+  await expect(pickingOrTie.first()).toBeVisible();
 
   await a.context.close();
   await b.context.close();
@@ -102,13 +102,13 @@ test('游戏中断网 → 出现重连提示 → 恢复网络 → 自动回到�
   await a.context.setOffline(true);
 
   // 重连提示条出现，且牌桌没被跳走
-  await expect(a.page.getByText(/正在把你拉回来/)).toBeVisible({ timeout: 20_000 });
+  await expect(a.page.getByText(/正在重连/)).toBeVisible({ timeout: 20_000 });
   await expect(a.page.getByText(/第 .* 轮/)).toBeVisible();
 
   await a.context.setOffline(false);
 
   // 自动回到可操作状态
-  await expect(a.page.getByText(/正在把你拉回来/)).toHaveCount(0, { timeout: 40_000 });
+  await expect(a.page.getByText(/正在重连/)).toHaveCount(0, { timeout: 40_000 });
   await expect(a.page.getByRole('button', { name: '摇骰子' })).toBeVisible();
 
   await a.context.close();
@@ -120,4 +120,38 @@ test('房号错误有明确提示', async ({ browser }) => {
   await guestJoins(page, 'tangni', '0000');
   await expect(page.getByText(/没找到这个房间/)).toBeVisible();
   await context.close();
+});
+
+test('断网拉不回来时，能点「不等了」自己回首页重开', async ({ browser }) => {
+  const { a, b } = await startedGame(browser);
+
+  await a.context.setOffline(true);
+  await expect(a.page.getByText(/正在重连/)).toBeVisible({ timeout: 20_000 });
+
+  // ★ 不该被困在重连界面：点「不等了」立刻回首页
+  await a.page.getByRole('button', { name: '不等了' }).click();
+  await expect(a.page.getByPlaceholder('怎么称呼你')).toBeVisible();
+  await expect(a.page.getByText(/正在重连/)).toHaveCount(0);
+
+  // 恢复网络后也不该被自动拽回牌桌（用户已经明确表示不等了）
+  await a.context.setOffline(false);
+  await a.page.waitForTimeout(3000);
+  await expect(a.page.getByPlaceholder('怎么称呼你')).toBeVisible();
+
+  await a.context.close();
+  await b.context.close();
+});
+
+test('重连尝试次数有上限，不会无限转圈', async ({ browser }) => {
+  const { a, b } = await startedGame(browser);
+
+  // 一直断网 → 试几次之后应该自己放手回首页，而不是永远转
+  await a.context.setOffline(true);
+  await expect(a.page.getByText(/正在重连/)).toBeVisible({ timeout: 20_000 });
+
+  await expect(a.page.getByPlaceholder('怎么称呼你')).toBeVisible({ timeout: 45_000 });
+  await expect(a.page.getByText(/没连上/)).toBeVisible();
+
+  await a.context.close();
+  await b.context.close();
 });

@@ -72,17 +72,28 @@ export function Toast({
 }
 
 /**
- * 重连提示条。★ 重连期间保留牌桌画面 + 叠一条提示（playbook §5.2 第 3 点），
+ * 重连提示条。重连期间保留牌桌画面 + 叠一条提示（playbook §5.2 第 3 点），
  * 不跳走、不白屏 —— 跳走等于告诉用户「你输了」。
+ *
+ * ★ 但必须给一个「不等了」的出口：自动重连只试几次，
+ *   万一卡住，用户能自己点掉回首页重开，而不是干瞪着转圈。
  */
-export function ReconnectingBanner({ attempt }: { attempt: number }) {
+export function ReconnectingBanner({
+  attempt,
+  total,
+  onGiveUp,
+}: {
+  attempt: number;
+  total: number;
+  onGiveUp: () => void;
+}) {
   return (
     <motion.div
       initial={{ y: -60, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       className="fixed top-0 left-0 right-0 z-50 flex justify-center px-4 pt-3"
     >
-      <div className="flex items-center gap-2.5 rounded-full border border-gold/40 bg-night-2/95 px-5 py-2.5 text-sm text-gold shadow-lg backdrop-blur">
+      <div className="flex items-center gap-3 rounded-full border border-gold/40 bg-night-2/95 px-5 py-2.5 text-sm text-gold shadow-lg backdrop-blur">
         <motion.span
           animate={{ rotate: 360 }}
           transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
@@ -91,9 +102,20 @@ export function ReconnectingBanner({ attempt }: { attempt: number }) {
           ✦
         </motion.span>
         <span>
-          连接断了，正在把你拉回来
-          {attempt > 1 && <span className="opacity-60"> · 第 {attempt} 次</span>}
+          连接断了，正在重连
+          {attempt > 0 && (
+            <span className="opacity-60">
+              {' '}
+              {attempt}/{total}
+            </span>
+          )}
         </span>
+        <button
+          onClick={onGiveUp}
+          className="ml-1 rounded-full border border-gold/40 px-3 py-1 text-xs text-gold/90"
+        >
+          不等了
+        </button>
       </div>
     </motion.div>
   );

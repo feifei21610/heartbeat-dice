@@ -1,8 +1,6 @@
 import { motion } from 'framer-motion';
-import type { SpiceLevel } from '@game/shared/types';
-import { MAX_ROUNDS, MIN_ROUNDS, SPICE_HINTS, SPICE_LABELS } from '@game/shared/constants';
+import { MAX_ROUNDS, MIN_ROUNDS } from '@game/shared/constants';
 import { useOnlineStore } from '../store/onlineStore';
-import { DeckPicker } from '../components/DeckPicker';
 
 /**
  * 等待室。★ 客人也要能看到房主设的配置（playbook §11 清单最后一项），
@@ -17,7 +15,6 @@ export function LobbyPage() {
   if (!room) return null;
 
   const bothHere = room.players.length >= 2;
-  const spice = room.spiceLevel as SpiceLevel;
 
   return (
     <div className="relative z-10 mx-auto flex min-h-full max-w-md flex-col justify-center px-5 py-10">
@@ -71,27 +68,16 @@ export function LobbyPage() {
                 onChange={(e) => updateConfig({ targetRounds: Number(e.target.value) })}
                 className="mt-2 w-full accent-rose"
               />
-              <div className="mt-4">
-                <DeckPicker
-                  value={spice}
-                  onChange={(lv) => updateConfig({ spiceLevel: lv })}
-                />
-              </div>
             </>
           ) : (
-            <div className="flex items-center justify-around text-center">
-              <div>
-                <p className="text-xs tracking-wider text-blush/50">轮数</p>
-                <p className="mt-1 text-lg text-gold">{room.targetRounds} 轮</p>
-              </div>
-              <div className="h-8 w-px bg-blush/15" />
-              <div>
-                <p className="text-xs tracking-wider text-blush/50">尺度</p>
-                <p className="mt-1 text-lg text-gold">{SPICE_LABELS[spice]}</p>
-              </div>
+            <div className="text-center">
+              <p className="text-xs tracking-wider text-blush/50">轮数</p>
+              <p className="mt-1 text-lg text-gold">{room.targetRounds} 轮</p>
             </div>
           )}
-          <p className="mt-3 text-center text-xs text-blush/45">{SPICE_HINTS[spice]}</p>
+          <p className="mt-3 text-center text-xs text-blush/45">
+            题目随机抽，赢的人从四道里挑一道给对方
+          </p>
         </div>
 
         {room.isHost && (

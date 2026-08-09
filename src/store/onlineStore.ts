@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import type { GameState, SpiceLevel } from '@game/shared/types';
-import { DEFAULT_ROUNDS, DEFAULT_SPICE_LEVEL } from '@game/shared/constants';
+import type { GameState } from '@game/shared/types';
+import { DEFAULT_ROUNDS, RECONNECT_MAX_ATTEMPTS } from '@game/shared/constants';
 import {
   networkClient,
   type ActionApplied,
@@ -28,7 +28,6 @@ interface RoomInfo {
   isHost: boolean;
   myPlayerIndex: number;
   targetRounds: number;
-  spiceLevel: SpiceLevel;
   players: PlayerBrief[];
 }
 
@@ -44,17 +43,19 @@ interface OnlineState {
   /** 上一个动作是谁做的，用于动画 */
   lastActionBy: string | null;
 
-  createRoom: (nickname: string, targetRounds: number, spiceLevel: SpiceLevel) => Promise<void>;
+  createRoom: (nickname: string, targetRounds: number) => Promise<void>;
   joinRoom: (nickname: string, roomId: string) => Promise<void>;
   tryResumeSession: () => Promise<void>;
   startGame: () => void;
   playAgain: () => void;
-  updateConfig: (cfg: { targetRounds?: number; spiceLevel?: SpiceLevel }) => void;
+  updateConfig: (cfg: { targetRounds?: number }) => void;
+  pickTruth: (choiceIndex: number) => void;
   roll: () => void;
   truthDone: () => void;
-  rerollTruth: () => void;
   resetTie: () => void;
   leave: () => Promise<void>;
+  /** 用户主动放弃重连，回首页自己重开 */
+  giveUpReconnect: () => void;
   dismissError: () => void;
   dismissToast: () => void;
 }
@@ -70,6 +71,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** ★ 模块级守卫：否则每次重连都叠一层 handler，一个动作被处理多次（playbook §5.5） */
 let listenersAttached = false;
+
+/**
+ * 重连循环的「代」。用户点「不等了」或主动退出时递增，
+ * 正在跑的循环发现代变了就悄悄退出 —— 否则它会在用户已经回到首页后
+ * 突然把人拽回牌桌。
+ */
+let reconnectGeneration = 0;
 
 /** 有 token 就直接进重连态，避免挂载瞬间闪一下首页 */
 const initialPhase: UiPhase = networkClient.hasStoredSession() ? 'reconnecting' : 'home';
@@ -88,7 +96,6 @@ export const useOnlineStore = create<OnlineState>((set, get) => {
           isHost: m.isHost,
           myPlayerIndex: m.myPlayerIndex,
           targetRounds: m.targetRounds,
-          spiceLevel: m.spiceLevel,
           players: m.players,
         },
         snapshot: m.snapshot,
@@ -108,19 +115,8 @@ export const useOnlineStore = create<OnlineState>((set, get) => {
     networkClient.on('schemaChanged', (m) => {
       const room = get().room;
       if (!room) return;
-      if (
-        room.targetRounds === m.targetRounds &&
-        room.spiceLevel === m.spiceLevel
-      ) {
-        return;
-      }
-      set({
-        room: {
-          ...room,
-          targetRounds: m.targetRounds,
-          spiceLevel: m.spiceLevel,
-        },
-      });
+      if (room.targetRounds === m.targetRounds) return;
+      set({ room: { ...room, targetRounds: m.targetRounds } });
     });
 
     networkClient.on('actionApplied', (m: ActionApplied) => {
@@ -168,43 +164,60 @@ export const useOnlineStore = create<OnlineState>((set, get) => {
   }
 
   /**
-   * 自动重连：指数退避 + 网络状态感知（playbook §5.2 第 3 点）。
-   * 重连期间保留牌桌画面 + 叠提示条，不跳走、不白屏。
+   * 自动重连：试几次就放手。
    *
-   * ★ 刷新页面时会有竞态：新页面可能比服务端处理完 WS 关闭更快，
+   * ★ 刷新页面时有竞态：新页面可能比服务端处理完 WS 关闭更快，
    *   此时 allowReconnection 还没注册，reconnect 会拿到 4003/522。
-   *   所以必须重试若干次，不能一次失败就放弃（否则刷新永远回不去）。
+   *   所以要重试，不能一次失败就放弃（否则刷新永远回不去）。
+   *
+   * ★ 但也别死磕：拉不回来就该放人走。卡在「正在把你拉回来」比
+   *   直接回首页更让人恼火 —— 用户宁愿自己重开一局。
+   *   离线时也只多等一小会儿，不再无限期挂着不消耗次数。
    */
   async function runReconnectLoop() {
-    for (let attempt = 1; attempt <= 12; attempt++) {
-      // 网络没恢复就不消耗次数
-      if (!navigator.onLine) {
-        await sleep(1000);
-        attempt--;
-        continue;
-      }
+    const myGeneration = reconnectGeneration;
+    const abandoned = () => reconnectGeneration !== myGeneration;
+
+    for (let attempt = 1; attempt <= RECONNECT_MAX_ATTEMPTS; attempt++) {
+      if (abandoned()) return;
       set({ reconnectAttempt: attempt });
-      try {
-        await networkClient.reconnect();
-        // ★ 不在这里设 phase！等 fullStateSync 到了再切（playbook §5.4）
-        return;
-      } catch {
-        // token 路线失败，试昵称重认领（换设备 / 清缓存的兜底）
+
+      // 断网时给一次喘息机会，但不无限等
+      if (!navigator.onLine) await sleep(1200);
+
+      if (abandoned()) return;
+
+      if (navigator.onLine) {
         try {
-          await networkClient.reclaimByNickname();
+          await networkClient.reconnect();
+          // ★ 不在这里设 phase！等 fullStateSync 到了再切（playbook §5.4）
           return;
         } catch {
-          await sleep(Math.min(400 * 2 ** attempt, 6000));
+          // token 路线失败，试昵称重认领（换设备 / 清缓存的兜底）
+          try {
+            await networkClient.reclaimByNickname();
+            return;
+          } catch {
+            // 两条路都不通，退避后再试
+          }
         }
       }
+
+      if (attempt < RECONNECT_MAX_ATTEMPTS) {
+        await sleep(Math.min(600 * attempt, 2000));
+      }
     }
-    // 最终失败：清掉过期 token，否则下次启动拿着它撞墙
+
+    if (abandoned()) return;
+
+    // 放手：清掉过期 token，回首页让用户自己重开
     networkClient.clearSession();
     set({
       phase: 'home',
-      errorMessage: '重连失败了，重新进房间试试',
+      errorMessage: '没连上，重新开一局吧',
       room: null,
       snapshot: null,
+      reconnectAttempt: 0,
     });
   }
 
@@ -217,12 +230,12 @@ export const useOnlineStore = create<OnlineState>((set, get) => {
     reconnectAttempt: 0,
     lastActionBy: null,
 
-    async createRoom(nickname, targetRounds, spiceLevel) {
+    async createRoom(nickname, targetRounds) {
       attachListeners();
       set({ phase: 'connecting', errorMessage: null });
       const roomCode = String(Math.floor(1000 + Math.random() * 9000));
       try {
-        await networkClient.createRoom({ nickname, roomCode, targetRounds, spiceLevel });
+        await networkClient.createRoom({ nickname, roomCode, targetRounds });
         // phase 留给 fullStateSync 设置
       } catch (e: any) {
         set({ phase: 'home', errorMessage: e?.message ?? '建房失败' });
@@ -257,10 +270,25 @@ export const useOnlineStore = create<OnlineState>((set, get) => {
     updateConfig: (cfg) => networkClient.updateConfig(cfg),
     roll: () => networkClient.sendAction('Roll'),
     truthDone: () => networkClient.sendAction('TruthDone'),
-    rerollTruth: () => networkClient.sendAction('RerollTruth'),
     resetTie: () => networkClient.sendAction('ResetTie'),
+    pickTruth: (choiceIndex) => networkClient.pickTruth(choiceIndex),
+
+    giveUpReconnect() {
+      // 提高 generation 让在跑的重连循环自己失效，避免它稍后把用户拽回来
+      reconnectGeneration++;
+      networkClient.clearSession();
+      set({
+        phase: 'home',
+        room: null,
+        snapshot: null,
+        toast: null,
+        errorMessage: null,
+        reconnectAttempt: 0,
+      });
+    },
 
     async leave() {
+      reconnectGeneration++;
       await networkClient.leave();
       set({ phase: 'home', room: null, snapshot: null, errorMessage: null, toast: null });
     },
@@ -270,4 +298,4 @@ export const useOnlineStore = create<OnlineState>((set, get) => {
   };
 });
 
-export const DEFAULTS = { rounds: DEFAULT_ROUNDS, spice: DEFAULT_SPICE_LEVEL };
+export const DEFAULTS = { rounds: DEFAULT_ROUNDS };

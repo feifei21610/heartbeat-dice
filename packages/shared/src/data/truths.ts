@@ -1,23 +1,22 @@
-import type { SpiceLevel, TruthCard } from '../types/game.js';
+import type { TruthCategory, TruthCard } from '../types/game.js';
 
 /**
  * 真心话题库。
  *
- * 命名约定：id 前缀 = 档位缩写 + 序号，稳定不变（会进 usedTruthIds 和历史记录）。
+ * ★ 抽题是从 ALL_TRUTHS 里**纯随机**抽的，玩家不选分类，前端也不展示分类。
+ *   下面按话题分组只是为了方便维护和保证覆盖面均衡。
+ *
+ * 命名约定：id 前缀 = 分类缩写 + 序号，稳定不变（会进 usedTruthIds 和历史记录）。
  * 加题只在数组末尾追加，不要改已有 id，也不要调整已有顺序。
  *
- * 分两类档位：
- *   尺度档（sweet / flirty / heart）—— 偏调情，越靠后越暧昧
- *   深聊档（memory / daily / feelings / past / values / future）—— 偏交心，按领域分
- *
- * 深聊档整理自四套情侣话题清单，已合并去重。刻意剔掉了两类：
+ * 深聊类整理自四套情侣话题清单，已合并去重。刻意剔掉了两类：
  *   - 婚前谈判向（彩礼嫁妆、婚后财产分配、要几个孩子、婚后和父母同住）
  *   - 查账/翻旧账向（哪次让你觉得被伤害、有没有想放弃这段感情、
  *     有没有过没那么爱我的时刻）—— 是深聊，但玩着容易冷场
  * 想加回来就往对应数组末尾追加。
  */
 
-// ---------------------------------------------------------------- 尺度档
+// ---------------------------------------------------------------- 调情类
 
 const sweet: string[] = [
   '你第一次觉得「我好像有点喜欢这个人」是哪一刻？',
@@ -98,7 +97,7 @@ const heart: string[] = [
   '现在最想对我做的一件事是什么？做，还是说？',
 ];
 
-// ---------------------------------------------------------------- 深聊档
+// ---------------------------------------------------------------- 深聊类
 
 /** 记忆：初识、第一印象、共同经历 */
 const memory: string[] = [
@@ -252,11 +251,11 @@ const future: string[] = [
   '最后坦白一句，你这辈子最幸运的遇见，是不是我？',
 ];
 
-function build(level: SpiceLevel, prefix: string, texts: string[]): TruthCard[] {
-  return texts.map((text, i) => ({ id: `${prefix}${i + 1}`, text, level }));
+function build(category: TruthCategory, prefix: string, texts: string[]): TruthCard[] {
+  return texts.map((text, i) => ({ id: `${prefix}${i + 1}`, text, category }));
 }
 
-export const TRUTH_DECKS: Record<SpiceLevel, TruthCard[]> = {
+export const TRUTH_DECKS: Record<TruthCategory, TruthCard[]> = {
   sweet: build('sweet', 's', sweet),
   flirty: build('flirty', 'f', flirty),
   heart: build('heart', 'h', heart),
@@ -268,7 +267,13 @@ export const TRUTH_DECKS: Record<SpiceLevel, TruthCard[]> = {
   future: build('future', 'u', future),
 };
 
-/** 某一档位下的全部题目。 */
-export function getTruthDeck(level: SpiceLevel): TruthCard[] {
-  return TRUTH_DECKS[level];
+/**
+ * ★ 抽题的唯一数据源：全部题目摊平成一个池子。
+ *   玩家不选分类，抽题是纯随机（见 game-engine/rules.ts 的 drawTruthChoices）。
+ */
+export const ALL_TRUTHS: TruthCard[] = Object.values(TRUTH_DECKS).flat();
+
+/** 某一分类下的全部题目。只用于题库维护和统计，不参与抽题。 */
+export function getTruthDeck(category: TruthCategory): TruthCard[] {
+  return TRUTH_DECKS[category];
 }

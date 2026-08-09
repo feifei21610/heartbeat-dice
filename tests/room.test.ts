@@ -24,7 +24,6 @@ afterEach(async () => {
 async function seatTwo(options: Record<string, unknown> = {}) {
   const room = await colyseus.createRoom<GameRoom>('heartbeat_dice', {
     targetRounds: 3,
-    spiceLevel: 'flirty',
     ...options,
   });
   const host = await colyseus.connectTo(room, { nickname: 'tangni' });
@@ -55,14 +54,16 @@ function snapshotKey(room: GameRoom) {
     g?.roundPhase,
     g?.players.map((p: any) => p.hasRolled),
     g?.history.length,
+    g?.currentTruth?.id ?? null,
+    g?.truthChoices?.length ?? 0,
   ];
 }
 
-/** 双方都掷，直到本轮判出结果（跳过平局重掷） */
+/** 双方都掷，直到分出胜负（停在 picking 阶段，跳过平局重掷） */
 async function rollUntilDecided(room: GameRoom, host: any, guest: any) {
   for (let attempt = 0; attempt < 40; attempt++) {
     const game = (room as any).game;
-    if (game.roundPhase === 'truth') return game;
+    if (game.roundPhase === 'picking') return game;
 
     if (game.roundPhase === 'tie') {
       await step(room, () => host.send('action', { type: 'ResetTie' }));
@@ -74,15 +75,20 @@ async function rollUntilDecided(room: GameRoom, host: any, guest: any) {
   throw new Error('round never decided');
 }
 
+/** 分出胜负后让赢家挑第一道题 → 停在 truth 阶段 */
+async function reachTruth(room: GameRoom, host: any, guest: any) {
+  const game = await rollUntilDecided(room, host, guest);
+  const winnerClient = game.loserIndex === 0 ? guest : host;
+  await step(room, () =>
+    winnerClient.send('action', { type: 'PickTruth', choiceIndex: 0 }),
+  );
+  return (room as any).game;
+}
+
 describe('room config', () => {
   it('clamps targetRounds coming from the client', async () => {
     const room = await colyseus.createRoom<GameRoom>('heartbeat_dice', { targetRounds: 999 });
     expect(room.state.targetRounds).toBe(20);
-  });
-
-  it('falls back to a safe spice level on garbage input', async () => {
-    const room = await colyseus.createRoom<GameRoom>('heartbeat_dice', { spiceLevel: 'wat' });
-    expect(room.state.spiceLevel).toBe('flirty');
   });
 
   it('uses a 4-digit room code when provided', async () => {
@@ -147,10 +153,9 @@ describe('host-only permissions', () => {
 
   it('lets the host change config in the lobby', async () => {
     const { room, host } = await seatTwo();
-    host.send('updateConfig', { targetRounds: 9, spiceLevel: 'heart' });
+    host.send('updateConfig', { targetRounds: 9 });
     await room.waitForNextMessage();
     expect(room.state.targetRounds).toBe(9);
-    expect(room.state.spiceLevel).toBe('heart');
   });
 
   it('refuses to start with only one player', async () => {
@@ -217,12 +222,48 @@ describe('gameplay authority', () => {
     const { room, host, guest } = await seatTwo();
     host.send('startGame');
     await host.waitForMessage('gameStarted');
-    const game = await rollUntilDecided(room, host, guest);
+    const game = await reachTruth(room, host, guest);
 
     const winnerClient = game.loserIndex === 0 ? guest : host;
     winnerClient.send('action', { type: 'TruthDone' });
     const err = await winnerClient.waitForMessage('error');
     expect(err.message).toContain('不能这么做');
+  });
+
+  it('only the winner may pick the question', async () => {
+    const { room, host, guest } = await seatTwo();
+    host.send('startGame');
+    await host.waitForMessage('gameStarted');
+    const game = await rollUntilDecided(room, host, guest);
+
+    const loserClient = game.loserIndex === 0 ? host : guest;
+    loserClient.send('action', { type: 'PickTruth', choiceIndex: 0 });
+    const err = await loserClient.waitForMessage('error');
+    expect(err.message).toContain('不能这么做');
+  });
+
+  it('rejects an out-of-range choiceIndex', async () => {
+    const { room, host, guest } = await seatTwo();
+    host.send('startGame');
+    await host.waitForMessage('gameStarted');
+    const game = await rollUntilDecided(room, host, guest);
+
+    const winnerClient = game.loserIndex === 0 ? guest : host;
+    winnerClient.send('action', { type: 'PickTruth', choiceIndex: 99 });
+    const err = await winnerClient.waitForMessage('error');
+    expect(err.message).toContain('不能这么做');
+  });
+
+  it('both players receive the same choices in the snapshot', async () => {
+    const { room, host, guest } = await seatTwo();
+    host.send('startGame');
+    await host.waitForMessage('gameStarted');
+    const game = await rollUntilDecided(room, host, guest);
+
+    // 候选题在权威快照里，两边拿到的是同一份
+    expect(game.truthChoices).toHaveLength(4);
+    const ids = game.truthChoices.map((c: any) => c.id);
+    expect(new Set(ids).size).toBe(4);
   });
 
   it('mirrors engine scores into the schema', async () => {
@@ -240,7 +281,7 @@ describe('gameplay authority', () => {
     await host.waitForMessage('gameStarted');
 
     for (let r = 0; r < 3; r++) {
-      const game = await rollUntilDecided(room, host, guest);
+      const game = await reachTruth(room, host, guest);
       const loserClient = game.loserIndex === 0 ? host : guest;
       await step(room, () => loserClient.send('action', { type: 'TruthDone' }));
     }

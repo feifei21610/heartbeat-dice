@@ -1,10 +1,5 @@
 import type { GameOptions, GameState, Player } from '../types/game.js';
-import {
-  DEFAULT_ROUNDS,
-  DEFAULT_SPICE_LEVEL,
-  MAX_ROUNDS,
-  MIN_ROUNDS,
-} from '../constants/game.js';
+import { DEFAULT_ROUNDS, MAX_ROUNDS, MIN_ROUNDS } from '../constants/game.js';
 import { randomSeed } from './rng.js';
 
 function makePlayer(id: string, nickname: string, type: Player['type']): Player {
@@ -35,21 +30,22 @@ export function startNewGame(options: Partial<GameOptions> = {}): GameState {
     targetRounds: clampRounds(options.targetRounds ?? DEFAULT_ROUNDS),
     phase: 'playing',
     roundPhase: 'rolling',
-    spiceLevel: options.spiceLevel ?? DEFAULT_SPICE_LEVEL,
     loserIndex: -1,
+    truthChoices: [],
     currentTruth: null,
     usedTruthIds: [],
     history: [],
   };
 }
 
-/** 清空本轮的骰子与真心话，进入下一轮的 rolling。不判断是否该结束。 */
+/** 清空本轮的骰子与题目，进入下一轮的 rolling。不判断是否该结束。 */
 export function resetForNextRound(state: GameState, nextRound: number): GameState {
   return {
     ...state,
     round: nextRound,
     roundPhase: 'rolling',
     loserIndex: -1,
+    truthChoices: [],
     currentTruth: null,
     players: state.players.map((p) => ({ ...p, dice: null, hasRolled: false })),
   };
