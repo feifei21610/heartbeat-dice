@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction, startNewGame, createRng, diceTotal, findLoserIndex } from '@game/shared/game-engine';
 import type { GameState } from '@game/shared/types';
+import { DEEP_LEVELS, SPICE_LEVELS } from '@game/shared/types';
+import { SPICE_HINTS, SPICE_LABELS } from '@game/shared/constants';
 import { getTruthDeck } from '@game/shared/data';
 
 /** 反复掷到双方都掷完，返回结果状态。 */
@@ -204,26 +206,53 @@ describe('tie handling', () => {
 });
 
 describe('truth reroll', () => {
-  it('reroll swaps the card and consumes the allowance', () => {
+  it('reroll swaps the card', () => {
     const s = seedWithDecisiveRoll();
-    expect(s.truthRerollsLeft).toBe(1);
     const rerolled = applyAction(s, { type: 'RerollTruth', playerIndex: s.loserIndex });
-    expect(rerolled.truthRerollsLeft).toBe(0);
     expect(rerolled.currentTruth!.id).not.toBe(s.currentTruth!.id);
     expect(rerolled.usedTruthIds).toHaveLength(2);
   });
 
-  it('a second reroll is rejected', () => {
+  it('reroll is unlimited', () => {
     const s = seedWithDecisiveRoll();
-    const once = applyAction(s, { type: 'RerollTruth', playerIndex: s.loserIndex });
-    expect(applyAction(once, { type: 'RerollTruth', playerIndex: s.loserIndex })).toBe(once);
+    let cur = s;
+    const seenIds = new Set([s.currentTruth!.id]);
+    for (let i = 0; i < 12; i++) {
+      const next = applyAction(cur, { type: 'RerollTruth', playerIndex: cur.loserIndex });
+      expect(next).not.toBe(cur);
+      seenIds.add(next.currentTruth!.id);
+      cur = next;
+    }
+    // 每次都真的换了一张牌，而不是空转
+    expect(seenIds.size).toBeGreaterThan(5);
   });
 
-  it('reroll allowance resets each round', () => {
+  it('reroll never leaves the truth phase', () => {
     const s = seedWithDecisiveRoll();
-    const used = applyAction(s, { type: 'RerollTruth', playerIndex: s.loserIndex });
-    const nextRound = applyAction(used, { type: 'TruthDone', playerIndex: used.loserIndex });
-    expect(nextRound.truthRerollsLeft).toBe(1);
+    let cur = s;
+    for (let i = 0; i < 8; i++) {
+      cur = applyAction(cur, { type: 'RerollTruth', playerIndex: cur.loserIndex });
+    }
+    expect(cur.roundPhase).toBe('truth');
+    expect(cur.loserIndex).toBe(s.loserIndex);
+    expect(cur.round).toBe(s.round);
+  });
+
+  it('rerolling past the deck size reshuffles instead of stalling', () => {
+    // 用最小的一档，确保能在合理次数内抽干
+    let s = startNewGame({ seed: 11, targetRounds: 3, spiceLevel: 'sweet' });
+    s = applyAction(s, { type: 'Roll', playerIndex: 0 });
+    s = applyAction(s, { type: 'Roll', playerIndex: 1 });
+    if (s.roundPhase !== 'truth') return; // 平局就跳过，另有专门用例
+
+    const deckSize = getTruthDeck('sweet').length;
+    let cur = s;
+    for (let i = 0; i < deckSize + 5; i++) {
+      const next = applyAction(cur, { type: 'RerollTruth', playerIndex: cur.loserIndex });
+      expect(next).not.toBe(cur);
+      expect(next.currentTruth).not.toBeNull();
+      cur = next;
+    }
   });
 });
 
@@ -320,8 +349,10 @@ describe('full game playthrough', () => {
 });
 
 describe('truth deck integrity', () => {
+  const ALL_LEVELS = [...SPICE_LEVELS, ...DEEP_LEVELS];
+
   it('every deck has unique ids and non-empty text', () => {
-    for (const level of ['sweet', 'flirty', 'heart'] as const) {
+    for (const level of ALL_LEVELS) {
       const deck = getTruthDeck(level);
       expect(deck.length).toBeGreaterThan(10);
       expect(new Set(deck.map((c) => c.id)).size).toBe(deck.length);
@@ -333,7 +364,40 @@ describe('truth deck integrity', () => {
   });
 
   it('ids are unique across all decks', () => {
-    const all = (['sweet', 'flirty', 'heart'] as const).flatMap((l) => getTruthDeck(l).map((c) => c.id));
+    const all = ALL_LEVELS.flatMap((l) => getTruthDeck(l).map((c) => c.id));
     expect(new Set(all).size).toBe(all.length);
+  });
+
+  it('no duplicate question text across the whole library', () => {
+    const texts = ALL_LEVELS.flatMap((l) => getTruthDeck(l).map((c) => c.text));
+    const dupes = texts.filter((t, i) => texts.indexOf(t) !== i);
+    expect(dupes).toEqual([]);
+  });
+
+  it('every question actually asks something', () => {
+    // 不强制以问号结尾：有些题故意用「…？说实话。」这种催答收尾
+    for (const level of ALL_LEVELS) {
+      for (const c of getTruthDeck(level)) {
+        expect(c.text).toMatch(/[？?]/);
+      }
+    }
+  });
+
+  it('every level has a label and a hint', () => {
+    for (const level of ALL_LEVELS) {
+      expect(SPICE_LABELS[level]?.length).toBeGreaterThan(0);
+      expect(SPICE_HINTS[level]?.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('all nine decks are reachable and playable', () => {
+    for (const level of ALL_LEVELS) {
+      const s = startNewGame({ seed: 7, targetRounds: 3, spiceLevel: level });
+      expect(s.spiceLevel).toBe(level);
+      const rolled = rollBoth(s);
+      if (rolled.roundPhase === 'truth') {
+        expect(rolled.currentTruth!.level).toBe(level);
+      }
+    }
   });
 });

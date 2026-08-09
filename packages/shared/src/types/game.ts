@@ -5,8 +5,27 @@
  * 所有类型必须可 JSON 序列化：它们要经过 WebSocket。
  */
 
-/** 尺度档位。数值越大越暧昧。 */
-export type SpiceLevel = 'sweet' | 'flirty' | 'heart';
+/**
+ * 题库档位。前三档按「尺度」分（越靠后越暧昧），
+ * 后面几档按「话题领域」分，用来深聊。
+ */
+export type SpiceLevel =
+  // 尺度档
+  | 'sweet'
+  | 'flirty'
+  | 'heart'
+  // 深聊档（按领域）
+  | 'memory'
+  | 'daily'
+  | 'feelings'
+  | 'past'
+  | 'values'
+  | 'future';
+
+/** 尺度档：偏调情 */
+export const SPICE_LEVELS = ['sweet', 'flirty', 'heart'] as const;
+/** 深聊档：偏交心 */
+export const DEEP_LEVELS = ['memory', 'daily', 'feelings', 'past', 'values', 'future'] as const;
 
 /** 玩家在一局里的角色。remote = 联机对面那个人。 */
 export type PlayerType = 'human' | 'remote';
@@ -75,8 +94,6 @@ export interface GameState {
   currentTruth: TruthCard | null;
   /** 已经用过的题目 id，避免重复 */
   usedTruthIds: string[];
-  /** 本轮还剩几次换题机会 */
-  truthRerollsLeft: number;
 
   history: RoundRecord[];
 }

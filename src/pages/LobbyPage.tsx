@@ -2,8 +2,7 @@ import { motion } from 'framer-motion';
 import type { SpiceLevel } from '@game/shared/types';
 import { MAX_ROUNDS, MIN_ROUNDS, SPICE_HINTS, SPICE_LABELS } from '@game/shared/constants';
 import { useOnlineStore } from '../store/onlineStore';
-
-const SPICE_ORDER: SpiceLevel[] = ['sweet', 'flirty', 'heart'];
+import { DeckPicker } from '../components/DeckPicker';
 
 /**
  * 等待室。★ 客人也要能看到房主设的配置（playbook §11 清单最后一项），
@@ -72,20 +71,11 @@ export function LobbyPage() {
                 onChange={(e) => updateConfig({ targetRounds: Number(e.target.value) })}
                 className="mt-2 w-full accent-rose"
               />
-              <div className="mt-4 grid grid-cols-3 gap-2">
-                {SPICE_ORDER.map((lv) => (
-                  <button
-                    key={lv}
-                    onClick={() => updateConfig({ spiceLevel: lv })}
-                    className={`rounded-xl border py-2 text-sm transition ${
-                      spice === lv
-                        ? 'border-rose bg-rose/20 text-white'
-                        : 'border-blush/20 text-blush/60'
-                    }`}
-                  >
-                    {SPICE_LABELS[lv]}
-                  </button>
-                ))}
+              <div className="mt-4">
+                <DeckPicker
+                  value={spice}
+                  onChange={(lv) => updateConfig({ spiceLevel: lv })}
+                />
               </div>
             </>
           ) : (

@@ -7,11 +7,12 @@ import {
   startNewGame,
 } from '@game/shared/game-engine';
 import type { Action, GameState, SpiceLevel } from '@game/shared/types';
+import { DEEP_LEVELS, SPICE_LEVELS } from '@game/shared/types';
 import { RECONNECT_WINDOW_SECONDS } from '@game/shared/constants';
 import { GameRoomState, PlayerSchema } from '../schema/GameRoomState.js';
 
 const PLAYER_COUNT = 2;
-const VALID_SPICE: SpiceLevel[] = ['sweet', 'flirty', 'heart'];
+const VALID_SPICE: SpiceLevel[] = [...SPICE_LEVELS, ...DEEP_LEVELS];
 
 /** 每 session 的限流窗口 */
 const RATE_LIMIT_WINDOW_MS = 1000;

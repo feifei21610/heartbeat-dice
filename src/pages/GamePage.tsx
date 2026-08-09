@@ -122,16 +122,10 @@ export function GamePage() {
               {iAmLoser && (
                 <div className="mt-5 flex gap-2.5">
                   <button
-                    disabled={snapshot.truthRerollsLeft <= 0}
                     onClick={rerollTruth}
-                    className="rounded-2xl border border-blush/30 px-4 py-2.5 text-sm text-blush/80 disabled:opacity-30"
+                    className="rounded-2xl border border-blush/30 px-4 py-2.5 text-sm text-blush/80"
                   >
                     换一题
-                    {snapshot.truthRerollsLeft > 0 && (
-                      <span className="ml-1 text-xs opacity-60">
-                        ×{snapshot.truthRerollsLeft}
-                      </span>
-                    )}
                   </button>
                   <button
                     onClick={truthDone}

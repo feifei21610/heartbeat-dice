@@ -4,7 +4,6 @@ import {
   DEFAULT_SPICE_LEVEL,
   MAX_ROUNDS,
   MIN_ROUNDS,
-  TRUTH_REROLLS_PER_ROUND,
 } from '../constants/game.js';
 import { randomSeed } from './rng.js';
 
@@ -40,7 +39,6 @@ export function startNewGame(options: Partial<GameOptions> = {}): GameState {
     loserIndex: -1,
     currentTruth: null,
     usedTruthIds: [],
-    truthRerollsLeft: TRUTH_REROLLS_PER_ROUND,
     history: [],
   };
 }
@@ -53,7 +51,6 @@ export function resetForNextRound(state: GameState, nextRound: number): GameStat
     roundPhase: 'rolling',
     loserIndex: -1,
     currentTruth: null,
-    truthRerollsLeft: TRUTH_REROLLS_PER_ROUND,
     players: state.players.map((p) => ({ ...p, dice: null, hasRolled: false })),
   };
 }

@@ -6,11 +6,9 @@ import {
   MAX_ROUNDS,
   MIN_ROUNDS,
   SPICE_HINTS,
-  SPICE_LABELS,
 } from '@game/shared/constants';
 import { useOnlineStore } from '../store/onlineStore';
-
-const SPICE_ORDER: SpiceLevel[] = ['sweet', 'flirty', 'heart'];
+import { DeckPicker } from '../components/DeckPicker';
 
 export function HomePage() {
   const createRoom = useOnlineStore((s) => s.createRoom);
@@ -107,21 +105,9 @@ export function HomePage() {
             </div>
 
             <div>
-              <span className="text-xs tracking-wider text-blush/60">尺度</span>
-              <div className="mt-2 grid grid-cols-3 gap-2">
-                {SPICE_ORDER.map((lv) => (
-                  <button
-                    key={lv}
-                    onClick={() => setSpice(lv)}
-                    className={`rounded-xl border py-2.5 text-sm transition ${
-                      spice === lv
-                        ? 'border-rose bg-rose/20 text-white'
-                        : 'border-blush/20 text-blush/60'
-                    }`}
-                  >
-                    {SPICE_LABELS[lv]}
-                  </button>
-                ))}
+              <span className="text-xs tracking-wider text-blush/60">聊什么</span>
+              <div className="mt-2">
+                <DeckPicker value={spice} onChange={setSpice} />
               </div>
               <p className="mt-2 text-center text-xs text-blush/50">{SPICE_HINTS[spice]}</p>
             </div>

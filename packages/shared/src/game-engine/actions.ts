@@ -98,7 +98,6 @@ function handleRerollTruth(state: GameState, playerIndex: number): GameState {
     rngCursor: cursor,
     usedTruthIds,
     currentTruth: truth,
-    truthRerollsLeft: state.truthRerollsLeft - 1,
   };
 }
 

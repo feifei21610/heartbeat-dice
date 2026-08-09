@@ -43,8 +43,9 @@ export function canActOnTruth(state: GameState, playerIndex: number): boolean {
   return state.loserIndex === playerIndex;
 }
 
+/** 换题不限次数：想换到顺眼的为止 */
 export function canRerollTruth(state: GameState, playerIndex: number): boolean {
-  return canActOnTruth(state, playerIndex) && state.truthRerollsLeft > 0;
+  return canActOnTruth(state, playerIndex);
 }
 
 /** 平局后任一方都可以点重掷 */
