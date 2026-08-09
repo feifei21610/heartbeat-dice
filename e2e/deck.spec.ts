@@ -107,3 +107,34 @@ test('换题不限次数，可以连点很多下', async ({ browser }) => {
 
   await ca.close(); await cb.close();
 });
+
+test('房主在等待室改档位，客人立刻看到', async ({ browser }) => {
+  const ca = await browser.newContext(); const a = await ca.newPage();
+  const cb = await browser.newContext(); const b = await cb.newPage();
+  await a.goto('/'); await b.goto('/');
+
+  await a.getByPlaceholder('怎么称呼你').fill('tangni');
+  await a.getByRole('button', { name: '我来开一局' }).click();
+  await a.getByRole('button', { name: '微甜', exact: true }).click();
+  await a.getByRole('button', { name: /开房/ }).click();
+  const roomId = (await a.locator('p.font-mono').textContent())!.trim();
+
+  await b.getByPlaceholder('怎么称呼你').fill('harriet');
+  await b.getByRole('button', { name: '我有房号，加入她' }).click();
+  await b.getByPlaceholder('4 位数字').fill(roomId);
+  await b.getByRole('button', { name: '进去' }).click();
+
+  // 客人进来时看到的是「微甜」
+  await expect(b.getByText('微甜')).toBeVisible();
+
+  // ★ 房主改成「三观」，客人应该立刻跟着变（靠 Schema 同步，不是重新加入）
+  await a.getByRole('button', { name: '三观', exact: true }).click();
+  await expect(b.getByText('三观')).toBeVisible();
+  await expect(b.getByText('底线、原则、对感情的看法')).toBeVisible();
+
+  // 轮数也一样
+  await a.locator('input[type=range]').fill('12');
+  await expect(b.getByText('12 轮')).toBeVisible();
+
+  await ca.close(); await cb.close();
+});

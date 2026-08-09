@@ -100,6 +100,29 @@ export const useOnlineStore = create<OnlineState>((set, get) => {
       set({ phase: 'playing', snapshot: m.snapshot, toast: '开始了，别手软' });
     });
 
+    /**
+     * ★ Schema 自动同步：房主在等待室改配置时，客人靠这个即时看到。
+     *   fullStateSync 只在加入那一刻发一次，光靠它的话房主之后的改动
+     *   客人永远看不到（playbook §11 清单里「store 的监听」这一步）。
+     */
+    networkClient.on('schemaChanged', (m) => {
+      const room = get().room;
+      if (!room) return;
+      if (
+        room.targetRounds === m.targetRounds &&
+        room.spiceLevel === m.spiceLevel
+      ) {
+        return;
+      }
+      set({
+        room: {
+          ...room,
+          targetRounds: m.targetRounds,
+          spiceLevel: m.spiceLevel,
+        },
+      });
+    });
+
     networkClient.on('actionApplied', (m: ActionApplied) => {
       set({ snapshot: m.snapshot, lastActionBy: m.byNickname });
     });
